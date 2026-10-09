@@ -52,16 +52,34 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
-      - name: App icon
+      - name: App icon (plain PNG launcher icons, no adaptive XML)
         continue-on-error: true
         run: |
           if [ -f icon.png ]; then
-            mkdir -p assets
-            cp icon.png assets/icon-only.png
-            cp icon.png assets/icon-foreground.png
-            npx capacitor-assets generate --android --iconBackgroundColor '#0D1224' --iconBackgroundColorDark '#0D1224'
+            pip install --break-system-packages pillow || pip install pillow
+            python3 - <<'PY'
+          import os, glob
+          from PIL import Image, ImageDraw
+          src = Image.open('icon.png').convert('RGBA')
+          res = 'android/app/src/main/res'
+          sizes = {'mdpi':48,'hdpi':72,'xhdpi':96,'xxhdpi':144,'xxxhdpi':192}
+          for d, px in sizes.items():
+              folder = f'{res}/mipmap-{d}'
+              os.makedirs(folder, exist_ok=True)
+              im = src.resize((px, px), Image.LANCZOS)
+              for name in ('ic_launcher.png', 'ic_launcher_foreground.png'):
+                  im.save(f'{folder}/{name}')
+              m = Image.new('L', (px*4, px*4), 0)
+              ImageDraw.Draw(m).ellipse((0, 0, px*4-1, px*4-1), fill=255)
+              m = m.resize((px, px), Image.LANCZOS)
+              r = Image.new('RGBA', (px, px), (0, 0, 0, 0))
+              r.paste(im, (0, 0), m)
+              r.save(f'{folder}/ic_launcher_round.png')
+          for x in glob.glob(f'{res}/mipmap-anydpi-v26/ic_launcher*.xml'):
+              os.remove(x)
+          print('icons ok')
+          PY
           fi
-
       - name: Sync web files
         run: npx cap sync android
 
